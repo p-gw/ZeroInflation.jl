@@ -1,9 +1,21 @@
 using Distributions
 using ZeroInflation
 using Test
+import Turing: BernoulliLogit
+import Turing: BinomialLogit
 
 @testset "ZeroInflation.jl" begin
-    @testset "constructing ZeroInflated" begin end
+    @testset "constructing ZeroInflated" begin
+        d = zeroinflated(Normal(), 0.25)
+        @test d isa ZeroInflated
+        @test d.mix isa Bernoulli
+        @test d.mix.p == 0.25
+        @test d.original isa Normal
+
+        d = zeroinflated(Normal(), BernoulliLogit(1.0))
+        @test d.mix isa BinomialLogit
+        @test d.mix.logitp == 1.0
+    end
 
     @testset "accessing ZeroInflated" begin
         d = zeroinflated(Poisson(2.0), 0.5)

@@ -3,47 +3,59 @@ module ZeroInflation
 using Distributions
 using LogExpFunctions
 using Random
+using Requires
+using UnPack
 
-export ZeroInflated
-export zeroinflated
+export ZeroInflated, zeroinflated
 
-struct ZeroInflated{D<:UnivariateDistribution,S<:ValueSupport,T<:Real} <: UnivariateDistribution{S}
-  original::D
-  θ::T
-  p::T
-  link::Function
-  function ZeroInflated(d::UnivariateDistribution, θ::T, link = identity) where {T<:Real}
-    p = link(θ)
-    @assert 0.0 <= p <= 1.0
-    new{typeof(d),Distributions.value_support(typeof(d)),typeof(p)}(d, θ, p, link)
+struct ZeroInflated{D1<:UnivariateDistribution,D2<:UnivariateDistribution,S<:ValueSupport} <: UnivariateDistribution{S}
+  original::D1
+  mix::D2
+  function ZeroInflated(d::UnivariateDistribution, m::UnivariateDistribution)
+    new{typeof(d),typeof(m),Distributions.value_support(typeof(d))}(d, m)
   end
 end
 
-Distributions.params(d::ZeroInflated) = tuple(Distributions.params(d.original)..., d.link(d.p))
-
-Distributions.minimum(d::ZeroInflated) = min(minimum(d.original), 0)
-Distributions.maximum(d::ZeroInflated) = max(maximum(d.original), 0)
+Distributions.params(d::ZeroInflated) = tuple(Distributions.params(d.original)..., Distributions.params(d.mix)...)
+Distributions.minimum(d::ZeroInflated) = min(minimum(d.original), minimum(d.mix))
+Distributions.maximum(d::ZeroInflated) = max(maximum(d.original), minimum(d.mix))
 
 function Distributions.logpdf(d::ZeroInflated, x::Real)
-  p = d.p
+  @unpack original, mix = d
   if x == 0
     loglik = [
-      logpdf(Bernoulli(p), 1),
-      logpdf(Bernoulli(p), 0) + logpdf(d.original, x)
+      logpdf(mix, 1),
+      logpdf(mix, 0) + logpdf(original, x)
     ]
     return logsumexp(loglik)
   else
-    return logpdf(Bernoulli(p), 0) + logpdf(d.original, x)
+    return logpdf(mix, 0) + logpdf(original, x)
   end
+end
+
+function Distributions.logpdf(d::ZeroInflated, x::Vector{T}) where {T<:Real}
+  @unpack original, mix = d
+  N_zero = sum(x .== 0)
+  N_nonzero = length(x) - N_zero
+
+  loglik = N_zero * logsumexp([
+    logpdf(mix, 1),
+    logpdf(mix, 0) + logpdf(original, 0)
+  ])
+  loglik += N_nonzero * logpdf(mix, 0)
+  loglik += sum(logpdf.(original, filter(!iszero, x)))
+  return loglik
 end
 
 Distributions.pdf(d::ZeroInflated, x::Real) = exp(logpdf(d, x))
 
 function Distributions.rand(rng::Random.AbstractRNG, d::ZeroInflated)
-  c = rand(rng, Bernoulli(d.p))
-  return c == 1 ? zero(eltype(d.original)) : rand(rng, d.original)
+  @unpack original, mix = d
+  c = rand(rng, mix)
+  return c == 1 ? zero(eltype(original)) : rand(rng, original)
 end
 
-zeroinflated(d::UnivariateDistribution, p::T; link = identity) where {T<:Real} = ZeroInflated(d, p, link)
+zeroinflated(d::UnivariateDistribution, p::T) where {T<:Real} = ZeroInflated(d, Bernoulli(p))
+zeroinflated(d::UnivariateDistribution, m::UnivariateDistribution) = ZeroInflated(d, m)
 
 end
