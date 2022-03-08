@@ -11,8 +11,9 @@ Requires = "ae029012-a4dd-5104-9daa-d747884805df"
 UnPack = "3a884ed6-31ef-47d7-9d2a-63182c4928ed"
 
 [compat]
-LogExpFunctions = "0.3"
 Distributions = "0.25"
+LogExpFunctions = "0.3"
+UnPack = "1"
 julia = "1"
 
 [extras]
